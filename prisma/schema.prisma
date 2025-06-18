@@ -1,0 +1,71 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "../lib/generated/prisma"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+model Stock {
+  id          String    @id @default(cuid())
+  code        String    @unique
+  tsCode      String?   @unique
+  name        String
+  area        String?
+  industry    String?
+  market      String?
+  exchange    String
+  listingDate DateTime?
+  delistDate  DateTime?
+  isHs        String?
+  isActive    Boolean   @default(true)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+}
+
+model StockBasic {
+  id         Int       @id @default(autoincrement())
+  code       String    @unique
+  name       String
+  area       String?
+  industry   String?
+  market     String?
+  exchange   String
+  listDate   DateTime?
+  delistDate DateTime?
+  isHs       String?
+  isActive   Boolean   @default(true)
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  @@index([code])
+  @@index([exchange])
+  @@index([isActive])
+}
+
+model StocksDaily {
+  id         Int      @id @default(autoincrement())
+  ts_code    String
+  trade_date DateTime
+  open       Float?
+  close      Float?
+  high       Float?
+  low        Float?
+  volume     Float?
+  amount     Float?
+  pct_chg    Float?
+  @@unique([ts_code, trade_date]) // 联合唯一索引
+}
+
+model Announcements {
+  id              Int      @id @default(autoincrement())
+  ts_code         String
+  ann_date        DateTime
+  title           String?
+  content         String?
+  sentiment_score Float?
+  @@index([ts_code, ann_date])
+}
