@@ -1,5 +1,0 @@
-tushare
-pandas
-snownlp
-supabase
-python-dotenv

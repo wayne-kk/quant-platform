@@ -1,71 +1,203 @@
+// A股数据采集与管理的 Prisma Schema
 generator client {
   provider = "prisma-client-js"
-  output   = "../lib/generated/prisma"
 }
 
 datasource db {
-  provider  = "postgresql"
-  url       = env("DATABASE_URL")
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
   directUrl = env("DIRECT_URL")
 }
 
-model Stock {
-  id          String    @id @default(cuid())
-  code        String    @unique
-  tsCode      String?   @unique
-  name        String
-  area        String?
-  industry    String?
-  market      String?
-  exchange    String
-  listingDate DateTime?
-  delistDate  DateTime?
-  isHs        String?
-  isActive    Boolean   @default(true)
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
-}
-
+// 股票基本信息表
 model StockBasic {
-  id         Int       @id @default(autoincrement())
-  code       String    @unique
-  name       String
-  area       String?
-  industry   String?
-  market     String?
-  exchange   String
-  listDate   DateTime?
-  delistDate DateTime?
-  isHs       String?
-  isActive   Boolean   @default(true)
-  createdAt  DateTime  @default(now())
-  updatedAt  DateTime  @updatedAt
+  stockCode   String   @id @map("stock_code") @db.VarChar(10)
+  stockName   String   @map("stock_name") @db.VarChar(50)
+  exchange    String?  @db.VarChar(10)
+  industry    String?  @db.VarChar(20)
+  listDate    DateTime? @map("list_date") @db.Date
+  totalShare  Decimal? @map("total_share") @db.Decimal(20, 4)
+  floatShare  Decimal? @map("float_share") @db.Decimal(20, 4)
+  isSt        Boolean? @map("is_st")
+  status      String?  @db.VarChar(10)
+  updateTime  DateTime @default(now()) @map("update_time") @db.Timestamptz
 
-  @@index([code])
-  @@index([exchange])
-  @@index([isActive])
+  // 关联关系
+  dailyQuotes       DailyQuote[]
+  financialIndicators FinancialIndicator[]
+  financialStatements FinancialStatement[]
+  moneyFlows        MoneyFlow[]
+
+  @@map("stock_basic")
 }
 
-model StocksDaily {
-  id         Int      @id @default(autoincrement())
-  ts_code    String
-  trade_date DateTime
-  open       Float?
-  close      Float?
-  high       Float?
-  low        Float?
-  volume     Float?
-  amount     Float?
-  pct_chg    Float?
-  @@unique([ts_code, trade_date]) // 联合唯一索引
+// 日线行情数据表
+model DailyQuote {
+  id           BigInt   @id @default(autoincrement())
+  stockCode    String   @map("stock_code") @db.VarChar(10)
+  tradeDate    DateTime @map("trade_date") @db.Date
+  open         Decimal? @db.Decimal(10, 2)
+  high         Decimal? @db.Decimal(10, 2)
+  low          Decimal? @db.Decimal(10, 2)
+  close        Decimal? @db.Decimal(10, 2)
+  volume       BigInt?
+  amount       Decimal? @db.Decimal(20, 2)
+  amplitude    Decimal? @db.Decimal(10, 2)  // 振幅
+  pctChg       Decimal? @map("pct_chg") @db.Decimal(10, 2)  // 涨跌幅
+  change       Decimal? @db.Decimal(10, 2)  // 涨跌额
+  turnoverRate Decimal? @map("turnover_rate") @db.Decimal(10, 2)  // 换手率
+  updateTime   DateTime @default(now()) @map("update_time") @db.Timestamptz
+
+  // 关联关系
+  stock StockBasic @relation(fields: [stockCode], references: [stockCode])
+
+  @@unique([stockCode, tradeDate], map: "daily_quote_stock_date_unique")
+  @@map("daily_quote")
 }
 
-model Announcements {
-  id              Int      @id @default(autoincrement())
-  ts_code         String
-  ann_date        DateTime
-  title           String?
-  content         String?
-  sentiment_score Float?
-  @@index([ts_code, ann_date])
+// 财务指标数据表
+model FinancialIndicator {
+  id           BigInt   @id @default(autoincrement())
+  stockCode    String   @map("stock_code") @db.VarChar(10)
+  period       String   @db.VarChar(8)
+  eps          Decimal? @db.Decimal(10, 4)
+  bps          Decimal? @db.Decimal(10, 4)
+  roe          Decimal? @db.Decimal(10, 4)
+  roa          Decimal? @db.Decimal(10, 4)
+  grossMargin  Decimal? @map("gross_margin") @db.Decimal(10, 4)
+  netMargin    Decimal? @map("net_margin") @db.Decimal(10, 4)
+  debtToAsset  Decimal? @map("debt_to_asset") @db.Decimal(10, 4)
+  currentRatio Decimal? @map("current_ratio") @db.Decimal(10, 4)
+  quickRatio   Decimal? @map("quick_ratio") @db.Decimal(10, 4)
+  updateTime   DateTime @default(now()) @map("update_time") @db.Timestamptz
+
+  // 关联关系
+  stock StockBasic @relation(fields: [stockCode], references: [stockCode])
+
+  @@unique([stockCode, period], map: "financial_indicator_stock_period_unique")
+  @@map("financial_indicator")
 }
+
+// 财务报表数据表
+model FinancialStatement {
+  id              BigInt   @id @default(autoincrement())
+  stockCode       String   @map("stock_code") @db.VarChar(10)
+  period          String   @db.VarChar(8)
+  reportType      String   @map("report_type") @db.VarChar(20)
+  totalAssets     Decimal? @map("total_assets") @db.Decimal(20, 2)
+  totalLiabilities Decimal? @map("total_liabilities") @db.Decimal(20, 2)
+  equity          Decimal? @db.Decimal(20, 2)
+  revenue         Decimal? @db.Decimal(20, 2)
+  operatingProfit Decimal? @map("operating_profit") @db.Decimal(20, 2)
+  netProfit       Decimal? @map("net_profit") @db.Decimal(20, 2)
+  netProfitParent Decimal? @map("net_profit_parent") @db.Decimal(20, 2)
+  cashFlowOperate Decimal? @map("cash_flow_operate") @db.Decimal(20, 2)
+  updateTime      DateTime @default(now()) @map("update_time") @db.Timestamptz
+
+  // 关联关系
+  stock StockBasic @relation(fields: [stockCode], references: [stockCode])
+
+  @@unique([stockCode, period, reportType], map: "financial_statement_stock_period_type_unique")
+  @@map("financial_statement")
+}
+
+// 指数数据表
+model IndexData {
+  id        BigInt   @id @default(autoincrement())
+  indexCode String   @map("index_code") @db.VarChar(10)
+  indexName String?  @map("index_name") @db.VarChar(50)
+  tradeDate DateTime @map("trade_date") @db.Date
+  open      Decimal? @db.Decimal(10, 2)
+  high      Decimal? @db.Decimal(10, 2)
+  low       Decimal? @db.Decimal(10, 2)
+  close     Decimal? @db.Decimal(10, 2)
+  change    Decimal? @db.Decimal(10, 2)
+  pctChg    Decimal? @map("pct_chg") @db.Decimal(10, 2)
+  volume    BigInt?
+  amount    Decimal? @db.Decimal(20, 2)
+  updateTime DateTime @default(now()) @map("update_time") @db.Timestamptz
+
+  @@unique([indexCode, tradeDate], map: "index_data_code_date_unique")
+  @@map("index_data")
+}
+
+// 交易日历表
+model TradeCalendar {
+  calendarDate DateTime @id @map("calendar_date") @db.Date
+  isTradeDay   Boolean  @map("is_trade_day")
+  weekDay      Int      @map("week_day") @db.SmallInt
+  isHoliday    Boolean  @map("is_holiday")
+  holidayName  String?  @map("holiday_name") @db.VarChar(50)
+  updateTime   DateTime @default(now()) @map("update_time") @db.Timestamptz
+
+  @@map("trade_calendar")
+}
+
+// 资金流向数据表
+model MoneyFlow {
+  id                 BigInt   @id @default(autoincrement())
+  stockCode          String   @map("stock_code") @db.VarChar(10)
+  tradeDate          DateTime @map("trade_date") @db.Date
+  mainNetInflow      Decimal? @map("main_net_inflow") @db.Decimal(20, 2)
+  mainNetInflowRate  Decimal? @map("main_net_inflow_rate") @db.Decimal(10, 4)
+  superNetInflow     Decimal? @map("super_net_inflow") @db.Decimal(20, 2)
+  largeNetInflow     Decimal? @map("large_net_inflow") @db.Decimal(20, 2)
+  mediumNetInflow    Decimal? @map("medium_net_inflow") @db.Decimal(20, 2)
+  smallNetInflow     Decimal? @map("small_net_inflow") @db.Decimal(20, 2)
+  updateTime         DateTime @default(now()) @map("update_time") @db.Timestamptz
+
+  // 关联关系
+  stock StockBasic @relation(fields: [stockCode], references: [stockCode])
+
+  @@unique([stockCode, tradeDate], map: "money_flow_stock_date_unique")
+  @@map("money_flow")
+}
+
+// 北向资金数据表
+model NorthboundCapital {
+  id          BigInt   @id @default(autoincrement())
+  tradeDate   DateTime @unique @map("trade_date") @db.Date
+  hkHold      Decimal? @map("hk_hold") @db.Decimal(20, 2)
+  hkHoldRatio Decimal? @map("hk_hold_ratio") @db.Decimal(10, 4)
+  netBuy      Decimal? @map("net_buy") @db.Decimal(20, 2)
+  buyAmount   Decimal? @map("buy_amount") @db.Decimal(20, 2)
+  sellAmount  Decimal? @map("sell_amount") @db.Decimal(20, 2)
+  updateTime  DateTime @default(now()) @map("update_time") @db.Timestamptz
+
+  @@map("northbound_capital")
+}
+
+// 股票人气榜数据表
+model StockHotRank {
+  id         BigInt   @id @default(autoincrement())
+  tradeDate  DateTime @map("trade_date") @db.Date
+  currentRank Int     @map("current_rank")
+  stockCode  String   @map("stock_code") @db.VarChar(10)
+  stockName  String   @map("stock_name") @db.VarChar(50)
+  latestPrice Decimal? @map("latest_price") @db.Decimal(10, 2)
+  change     Decimal? @db.Decimal(10, 2)
+  pctChg     Decimal? @map("pct_chg") @db.Decimal(10, 2)
+  updateTime DateTime @default(now()) @map("update_time") @db.Timestamptz
+
+  @@unique([tradeDate, currentRank], map: "stock_hot_rank_date_rank_unique")
+  @@unique([tradeDate, stockCode], map: "stock_hot_rank_date_code_unique")
+  @@map("stock_hot_rank")
+}
+
+// 股票飙升榜数据表
+model StockHotUp {
+  id            BigInt   @id @default(autoincrement())
+  tradeDate     DateTime @map("trade_date") @db.Date
+  rankChange    Int      @map("rank_change")           // 排名较昨日变动
+  currentRank   Int      @map("current_rank")          // 当前排名
+  stockCode     String   @map("stock_code") @db.VarChar(10)
+  stockName     String   @map("stock_name") @db.VarChar(50)
+  latestPrice   Decimal? @map("latest_price") @db.Decimal(10, 2)
+  change        Decimal? @db.Decimal(10, 2)
+  pctChg        Decimal? @map("pct_chg") @db.Decimal(10, 2)
+  updateTime    DateTime @default(now()) @map("update_time") @db.Timestamptz
+
+  @@unique([tradeDate, currentRank], map: "stock_hot_up_date_rank_unique")
+  @@unique([tradeDate, stockCode], map: "stock_hot_up_date_code_unique")
+  @@map("stock_hot_up")
+} 

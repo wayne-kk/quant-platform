@@ -9,7 +9,7 @@ if (!process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) {
     throw new Error('Missing environment variable: NEXT_PUBLIC_SUPABASE_ANON_KEY')
 }
 
-// 创建Supabase客户端
+// 创建Supabase客户端（客户端和服务端都可使用）
 export const supabase = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
