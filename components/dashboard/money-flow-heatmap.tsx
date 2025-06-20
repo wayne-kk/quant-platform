@@ -33,21 +33,33 @@ export function MoneyFlowHeatmap() {
   const [flowSummary, setFlowSummary] = useState<FlowSummary[]>([])
   const [loading, setLoading] = useState(true)
   const [indicator, setIndicator] = useState('今日')
+  const [stockCount, setStockCount] = useState(20)
 
   useEffect(() => {
     const fetchFundFlowData = async () => {
       try {
-        const today = new Date().toISOString().split('T')[0]
-        
+        // 先获取最新的交易日期
+        const { data: latestDateData } = await supabase
+          .from('stock_fund_flow_rank')
+          .select('trade_date')
+          .order('trade_date', { ascending: false })
+          .limit(1)
+
+        const latestDate = latestDateData?.[0]?.trade_date || new Date().toISOString().split('T')[0]
+        console.log('最新交易日期:', latestDate)
+
         const { data } = await supabase
           .from('stock_fund_flow_rank')
           .select('*')
-          .eq('trade_date', today)
+          .eq('trade_date', latestDate)
           .eq('indicator', indicator)
           .order('rank', { ascending: true })
-          .limit(20)
+          .limit(stockCount)
 
-        if (data) {
+        console.log('获取到的数据:', data)
+        console.log('数据条数:', data?.length)
+
+        if (data && data.length > 0) {
           const formattedData: FundFlowData[] = data.map((item: any) => ({
             stock_name: item.stock_name,
             stock_code: item.stock_code,
@@ -60,7 +72,8 @@ export function MoneyFlowHeatmap() {
             latest_price: Number(item.latest_price),
             pct_chg: Number(item.pct_chg)
           }))
-
+          
+          console.log('格式化后的数据:', formattedData)
           setFundFlowData(formattedData)
 
           // 计算资金流向汇总
@@ -69,22 +82,31 @@ export function MoneyFlowHeatmap() {
           const totalMedium = formattedData.reduce((sum, item) => sum + item.medium_net_amount, 0)
           const totalSmall = formattedData.reduce((sum, item) => sum + item.small_net_amount, 0)
 
-          setFlowSummary([
+          const summaryData = [
             { name: '超大单', value: totalSuperLarge / 100000000, color: '#ef4444' },
             { name: '大单', value: totalLarge / 100000000, color: '#f97316' },
             { name: '中单', value: totalMedium / 100000000, color: '#84cc16' },
             { name: '小单', value: totalSmall / 100000000, color: '#06b6d4' }
-          ])
+          ]
+          
+          console.log('汇总数据:', summaryData)
+          setFlowSummary(summaryData)
+        } else {
+          console.log('没有获取到数据')
+          setFundFlowData([])
+          setFlowSummary([])
         }
       } catch (error) {
         console.error('获取资金流向数据失败:', error)
+        setFundFlowData([])
+        setFlowSummary([])
       } finally {
         setLoading(false)
       }
     }
 
     fetchFundFlowData()
-  }, [indicator])
+  }, [indicator, stockCount])
 
   const CustomTooltip = ({ active, payload, label }: any) => {
     if (active && payload && payload.length) {
@@ -133,6 +155,71 @@ export function MoneyFlowHeatmap() {
     )
   }
 
+  // 如果没有数据，显示提示信息
+  if (!loading && fundFlowData.length === 0) {
+    return (
+      <motion.div 
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        transition={{ duration: 0.6 }}
+        className="space-y-6"
+      >
+        {/* 控制栏 */}
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+          <h3 className="text-lg font-semibold">资金流向分析</h3>
+          <div className="flex flex-col sm:flex-row gap-3">
+            {/* 时间周期选择 */}
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-muted-foreground whitespace-nowrap">时间周期:</span>
+              <div className="flex space-x-1">
+                {['今日', '3日', '5日', '10日'].map((period) => (
+                  <Button
+                    key={period}
+                    variant={indicator === period ? "default" : "outline"}
+                    size="sm"
+                    onClick={() => setIndicator(period)}
+                    className="text-xs h-7"
+                  >
+                    {period}
+                  </Button>
+                ))}
+              </div>
+            </div>
+            
+            {/* 股票数量选择 */}
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-muted-foreground whitespace-nowrap">显示数量:</span>
+              <div className="flex space-x-1">
+                {[10, 20, 50].map((count) => (
+                  <Button
+                    key={count}
+                    variant={stockCount === count ? "default" : "outline"}
+                    size="sm"
+                    onClick={() => setStockCount(count)}
+                    className="text-xs h-7"
+                  >
+                    {count}只
+                  </Button>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* 无数据提示 */}
+        <div className="h-80 flex items-center justify-center">
+          <div className="text-center">
+            <DollarSign className="h-12 w-12 mx-auto mb-4 text-gray-400" />
+            <p className="text-lg font-medium text-muted-foreground mb-2">暂无数据</p>
+            <p className="text-sm text-muted-foreground">
+              当前时间周期（{indicator}）没有可用的资金流向数据
+            </p>
+          </div>
+        </div>
+      </motion.div>
+    )
+  }
+
   return (
     <motion.div 
       initial={{ opacity: 0 }}
@@ -141,29 +228,53 @@ export function MoneyFlowHeatmap() {
       className="space-y-6"
     >
       {/* 控制栏 */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <h3 className="text-lg font-semibold">资金流向分析</h3>
-        <div className="flex space-x-1">
-          {['今日', '3日', '5日', '10日'].map((period) => (
-            <Button
-              key={period}
-              variant={indicator === period ? "default" : "outline"}
-              size="sm"
-              onClick={() => setIndicator(period)}
-              className="text-xs h-7"
-            >
-              {period}
-            </Button>
-          ))}
+        <div className="flex flex-col sm:flex-row gap-3">
+          {/* 时间周期选择 */}
+          <div className="flex items-center gap-2">
+            <span className="text-sm text-muted-foreground whitespace-nowrap">时间周期:</span>
+            <div className="flex space-x-1">
+              {['今日', '3日', '5日', '10日'].map((period) => (
+                <Button
+                  key={period}
+                  variant={indicator === period ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setIndicator(period)}
+                  className="text-xs h-7"
+                >
+                  {period}
+                </Button>
+              ))}
+            </div>
+          </div>
+          
+          {/* 股票数量选择 */}
+          <div className="flex items-center gap-2">
+            <span className="text-sm text-muted-foreground whitespace-nowrap">显示数量:</span>
+            <div className="flex space-x-1">
+              {[10, 20, 50].map((count) => (
+                <Button
+                  key={count}
+                  variant={stockCount === count ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setStockCount(count)}
+                  className="text-xs h-7"
+                >
+                  {count}只
+                </Button>
+              ))}
+            </div>
+          </div>
         </div>
       </div>
 
       <div className="grid gap-6 lg:grid-cols-7">
         {/* 资金流向排行 */}
         <div className="lg:col-span-5">
-          <div className="h-80">
+          <div className={`${stockCount > 20 ? 'h-96' : 'h-80'} transition-all duration-300`}>
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={fundFlowData.slice(0, 10)} layout="horizontal" margin={{ top: 5, right: 30, left: 60, bottom: 5 }}>
+              <BarChart data={fundFlowData.slice(0, Math.min(stockCount, 15))} layout="horizontal" margin={{ top: 5, right: 30, left: 60, bottom: 5 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
                 <XAxis 
                   type="number"
@@ -181,7 +292,7 @@ export function MoneyFlowHeatmap() {
                 <Tooltip content={<CustomTooltip />} />
                 <Bar 
                   dataKey="main_net_inflow_amount" 
-                  fill={(data: any) => data.main_net_inflow_amount >= 0 ? '#10b981' : '#ef4444'}
+                  fill="#10b981"
                   radius={[0, 4, 4, 0]}
                 />
               </BarChart>
@@ -232,8 +343,8 @@ export function MoneyFlowHeatmap() {
       </div>
 
       {/* 股票列表 */}
-      <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-4">
-        {fundFlowData.slice(0, 8).map((stock, index) => (
+      <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5">
+        {fundFlowData.map((stock, index) => (
           <motion.div
             key={stock.stock_code}
             initial={{ opacity: 0, y: 20 }}

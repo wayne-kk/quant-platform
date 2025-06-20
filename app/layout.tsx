@@ -51,7 +51,7 @@ export default function RootLayout({
         >
           <div className="min-h-screen bg-background">
             <Navigation />
-            <main className="flex-1">
+            <main className="flex-1 pt-16">
               {children}
             </main>
           </div>

@@ -379,12 +379,34 @@ export default function HomePage() {
             </Link>
             
             <motion.div
-              whileHover={{ scale: 1.05 }}
+              whileHover={{ 
+                scale: 1.05,
+                boxShadow: "0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1)"
+              }}
               whileTap={{ scale: 0.95 }}
+              transition={{ duration: 0.2 }}
             >
-              <Button variant="outline" size="lg" className="border-white/30 text-white hover:bg-white/10 backdrop-blur-sm px-10 py-5 text-lg">
-                <Eye className="mr-2 h-5 w-5" />
-                了解更多
+              <Button 
+                variant="outline" 
+                size="lg" 
+                className="border-gray-900/30 text-gray-900 hover:bg-slate-100 hover:border-gray-900/60 hover:shadow-lg hover:text-gray-800 dark:border-white/30 dark:text-white dark:hover:bg-white/10 dark:hover:border-white/50 backdrop-blur-sm px-10 py-5 text-lg transition-all duration-300 group relative overflow-hidden"
+              >
+                                  <motion.div
+                    className="absolute inset-0 bg-gradient-to-r from-slate-50 to-slate-100 dark:from-white/5 dark:to-white/10 opacity-0 group-hover:opacity-100 transition-opacity duration-300"
+                  />
+                <motion.div
+                  className="relative z-10 flex items-center"
+                  whileHover={{ x: [0, 2, 0] }}
+                  transition={{ duration: 0.3 }}
+                >
+                  <motion.div
+                    animate={{ rotate: [0, 15, 0] }}
+                    transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
+                  >
+                    <Eye className="mr-2 h-5 w-5" />
+                  </motion.div>
+                  了解更多
+                </motion.div>
               </Button>
             </motion.div>
           </motion.div>
