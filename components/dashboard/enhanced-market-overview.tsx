@@ -125,17 +125,29 @@ export function EnhancedMarketOverview() {
         const dateInfo = await getLatestTradingDate()
         setTradingDateInfo(dateInfo)
 
-        // 获取股票总数
+        // 获取股票总数（排除退市和ST股票）
         const { count: totalStocks } = await supabase
           .from('stock_basic')
           .select('*', { count: 'exact', head: true })
+          .neq('status', '退市')  // 排除退市股票
+          .neq('is_st', true)     // 排除ST股票
 
-        // 获取最近交易日的数据
+        // 获取最近交易日的数据（排除ST和退市股票）
         const { data: todayQuotes, count: activeStocks } = await supabase
           .from('daily_quote')
-          .select('pct_chg, volume, amount', { count: 'exact' })
+          .select(`
+            pct_chg, 
+            volume, 
+            amount,
+            stock_basic!inner(
+              is_st,
+              status
+            )
+          `, { count: 'exact' })
           .eq('trade_date', dateInfo.date)
           .not('pct_chg', 'is', null)
+          .neq('stock_basic.status', '退市')  // 排除退市股票
+          .neq('stock_basic.is_st', true)     // 排除ST股票
         if (todayQuotes) {
           // 计算统计数据
           const avgChange = todayQuotes.reduce((sum, quote) => sum + Number(quote.pct_chg || 0), 0) / todayQuotes.length
@@ -205,23 +217,14 @@ export function EnhancedMarketOverview() {
       )}
 
       {/* 统计卡片 */}
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-4 md:grid-cols-1 lg:grid-cols-3">
         <StatCard
           title="股票总数"
           value={stats.totalStocks.toLocaleString()}
           icon={BarChart3}
-          subtitle="A股上市公司"
+          subtitle="A股上市公司（排除ST、退市）"
           color="from-blue-500 to-blue-600"
           progress={activeRate}
-        />
-
-        <StatCard
-          title="活跃股票"
-          value={stats.activeStocks.toLocaleString()}
-          icon={Activity}
-          subtitle="今日有交易"
-          color="from-green-500 to-green-600"
-          trend={stats.activeStocks > stats.totalStocks * 0.8 ? 'up' : 'neutral'}
         />
 
         <StatCard
