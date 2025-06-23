@@ -5,9 +5,10 @@ import { motion } from "framer-motion"
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from "recharts"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { TrendingUp, TrendingDown, DollarSign } from "lucide-react"
+import { TrendingUp, TrendingDown, DollarSign, Calendar, AlertCircle } from "lucide-react"
 import { supabase } from "@/lib/supabase"
 import { getStockColor, formatPctChg, formatPrice } from "@/lib/stock-colors"
+import { getLatestTradingDate, formatTradingDateDisplay, type TradingDateInfo } from "@/lib/trading-utils"
 
 interface FundFlowData {
   stock_name: string
@@ -34,24 +35,21 @@ export function MoneyFlowHeatmap() {
   const [loading, setLoading] = useState(true)
   const [indicator, setIndicator] = useState('今日')
   const [stockCount, setStockCount] = useState(20)
+  const [tradingDateInfo, setTradingDateInfo] = useState<TradingDateInfo | null>(null)
 
   useEffect(() => {
     const fetchFundFlowData = async () => {
       try {
-        // 先获取最新的交易日期
-        const { data: latestDateData } = await supabase
-          .from('stock_fund_flow_rank')
-          .select('trade_date')
-          .order('trade_date', { ascending: false })
-          .limit(1)
+        // 获取最近的交易日期信息
+        const dateInfo = await getLatestTradingDate()
+        setTradingDateInfo(dateInfo)
 
-        const latestDate = latestDateData?.[0]?.trade_date || new Date().toISOString().split('T')[0]
-        console.log('最新交易日期:', latestDate)
+        console.log('交易日期信息:', dateInfo)
 
         const { data } = await supabase
           .from('stock_fund_flow_rank')
           .select('*')
-          .eq('trade_date', latestDate)
+          .eq('trade_date', dateInfo.date)
           .eq('indicator', indicator)
           .order('rank', { ascending: true })
           .limit(stockCount)
@@ -72,7 +70,7 @@ export function MoneyFlowHeatmap() {
             latest_price: Number(item.latest_price),
             pct_chg: Number(item.pct_chg)
           }))
-          
+
           console.log('格式化后的数据:', formattedData)
           setFundFlowData(formattedData)
 
@@ -88,7 +86,7 @@ export function MoneyFlowHeatmap() {
             { name: '中单', value: totalMedium / 100000000, color: '#84cc16' },
             { name: '小单', value: totalSmall / 100000000, color: '#06b6d4' }
           ]
-          
+
           console.log('汇总数据:', summaryData)
           setFlowSummary(summaryData)
         } else {
@@ -158,7 +156,7 @@ export function MoneyFlowHeatmap() {
   // 如果没有数据，显示提示信息
   if (!loading && fundFlowData.length === 0) {
     return (
-      <motion.div 
+      <motion.div
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         transition={{ duration: 0.6 }}
@@ -166,7 +164,23 @@ export function MoneyFlowHeatmap() {
       >
         {/* 控制栏 */}
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-          <h3 className="text-lg font-semibold">资金流向分析</h3>
+          <div>
+            <h3 className="text-lg font-semibold">资金流向分析</h3>
+            {tradingDateInfo && (
+              <div className="flex items-center gap-2 mt-1">
+                <Calendar className="w-4 h-4 text-muted-foreground" />
+                <span className="text-sm text-muted-foreground">
+                  数据日期: {tradingDateInfo.date}
+                </span>
+                {!tradingDateInfo.isToday && (
+                  <Badge variant="outline" className="text-xs">
+                    <AlertCircle className="w-3 h-3 mr-1" />
+                    {formatTradingDateDisplay(tradingDateInfo)}
+                  </Badge>
+                )}
+              </div>
+            )}
+          </div>
           <div className="flex flex-col sm:flex-row gap-3">
             {/* 时间周期选择 */}
             <div className="flex items-center gap-2">
@@ -185,7 +199,7 @@ export function MoneyFlowHeatmap() {
                 ))}
               </div>
             </div>
-            
+
             {/* 股票数量选择 */}
             <div className="flex items-center gap-2">
               <span className="text-sm text-muted-foreground whitespace-nowrap">显示数量:</span>
@@ -221,7 +235,7 @@ export function MoneyFlowHeatmap() {
   }
 
   return (
-    <motion.div 
+    <motion.div
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       transition={{ duration: 0.6 }}
@@ -248,7 +262,7 @@ export function MoneyFlowHeatmap() {
               ))}
             </div>
           </div>
-          
+
           {/* 股票数量选择 */}
           <div className="flex items-center gap-2">
             <span className="text-sm text-muted-foreground whitespace-nowrap">显示数量:</span>
@@ -276,13 +290,13 @@ export function MoneyFlowHeatmap() {
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={fundFlowData.slice(0, Math.min(stockCount, 15))} layout="horizontal" margin={{ top: 5, right: 30, left: 60, bottom: 5 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-                <XAxis 
+                <XAxis
                   type="number"
                   stroke="#64748b"
                   fontSize={12}
                   tickFormatter={(value) => (value / 100000000).toFixed(1) + '亿'}
                 />
-                <YAxis 
+                <YAxis
                   type="category"
                   dataKey="stock_name"
                   stroke="#64748b"
@@ -290,8 +304,8 @@ export function MoneyFlowHeatmap() {
                   width={60}
                 />
                 <Tooltip content={<CustomTooltip />} />
-                <Bar 
-                  dataKey="main_net_inflow_amount" 
+                <Bar
+                  dataKey="main_net_inflow_amount"
                   fill="#10b981"
                   radius={[0, 4, 4, 0]}
                 />
@@ -321,13 +335,13 @@ export function MoneyFlowHeatmap() {
                 <Tooltip content={<PieTooltip />} />
               </PieChart>
             </ResponsiveContainer>
-            
+
             <div className="mt-4 space-y-2">
               {flowSummary.map((item, index) => (
                 <div key={index} className="flex items-center justify-between text-sm">
                   <div className="flex items-center">
-                    <div 
-                      className="w-3 h-3 rounded mr-2" 
+                    <div
+                      className="w-3 h-3 rounded mr-2"
                       style={{ backgroundColor: item.color }}
                     />
                     <span>{item.name}</span>
@@ -354,7 +368,7 @@ export function MoneyFlowHeatmap() {
             <div className="p-3 rounded-lg border bg-white dark:bg-slate-800 hover:shadow-md transition-shadow">
               <div className="flex items-center justify-between mb-2">
                 <span className="font-medium text-sm">{stock.stock_name}</span>
-                <Badge 
+                <Badge
                   variant="outline"
                   className={`text-xs ${getStockColor(stock.pct_chg, 'full')}`}
                 >

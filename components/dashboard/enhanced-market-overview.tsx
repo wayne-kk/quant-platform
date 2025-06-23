@@ -6,17 +6,20 @@ import CountUp from "react-countup"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Progress } from "@/components/ui/progress"
-import { 
-  TrendingUp, 
-  TrendingDown, 
-  Activity, 
+import {
+  TrendingUp,
+  TrendingDown,
+  Activity,
   DollarSign,
   BarChart3,
   Users,
-  Zap
+  Zap,
+  Calendar,
+  AlertCircle
 } from "lucide-react"
 import { supabase } from "@/lib/supabase"
 import { getStockColor } from "@/lib/stock-colors"
+import { getLatestTradingDate, formatTradingDateDisplay, type TradingDateInfo } from "@/lib/trading-utils"
 
 interface MarketStats {
   totalStocks: number
@@ -59,14 +62,14 @@ const StatCard = ({ title, value, icon: Icon, trend, subtitle, color, progress }
             )}
           </div>
           <p className="text-xs text-white/70 mb-2">{subtitle}</p>
-          
+
           {trend && (
-            <Badge 
-              variant="secondary" 
+            <Badge
+              variant="secondary"
               className={`
-                ${trend === 'up' ? getStockColor(1, 'full').replace('text-red-600', 'bg-red-500/20 text-red-100 border-red-400/30') : 
-                  trend === 'down' ? getStockColor(-1, 'full').replace('text-green-600', 'bg-green-500/20 text-green-100 border-green-400/30') : 
-                  'bg-gray-500/20 text-gray-100 border-gray-400/30'
+                ${trend === 'up' ? getStockColor(1, 'full').replace('text-red-600', 'bg-red-500/20 text-red-100 border-red-400/30') :
+                  trend === 'down' ? getStockColor(-1, 'full').replace('text-green-600', 'bg-green-500/20 text-green-100 border-green-400/30') :
+                    'bg-gray-500/20 text-gray-100 border-gray-400/30'
                 }
               `}
             >
@@ -113,28 +116,32 @@ export function EnhancedMarketOverview() {
     totalAmount: 0
   })
   const [loading, setLoading] = useState(true)
+  const [tradingDateInfo, setTradingDateInfo] = useState<TradingDateInfo | null>(null)
 
   useEffect(() => {
     const fetchMarketStats = async () => {
       try {
+        // 获取最近的交易日期信息
+        const dateInfo = await getLatestTradingDate()
+        setTradingDateInfo(dateInfo)
+
         // 获取股票总数
         const { count: totalStocks } = await supabase
           .from('stock_basic')
           .select('*', { count: 'exact', head: true })
 
-        // 获取今日交易数据
-        const today = new Date().toISOString().split('T')[0]
+        // 获取最近交易日的数据
         const { data: todayQuotes, count: activeStocks } = await supabase
           .from('daily_quote')
           .select('pct_chg, volume, amount', { count: 'exact' })
-          .eq('trade_date', today)
+          .eq('trade_date', dateInfo.date)
           .not('pct_chg', 'is', null)
         if (todayQuotes) {
           // 计算统计数据
           const avgChange = todayQuotes.reduce((sum, quote) => sum + Number(quote.pct_chg || 0), 0) / todayQuotes.length
           const totalVolume = todayQuotes.reduce((sum, quote) => sum + Number(quote.volume || 0), 0)
           const totalAmount = todayQuotes.reduce((sum, quote) => sum + Number(quote.amount || 0), 0)
-          
+
           // 计算涨跌统计
           const upCount = todayQuotes.filter(quote => Number(quote.pct_chg) > 0).length
           const downCount = todayQuotes.filter(quote => Number(quote.pct_chg) < 0).length
@@ -175,47 +182,66 @@ export function EnhancedMarketOverview() {
   const upRate = (stats.upCount / stats.activeStocks) * 100
 
   return (
-    <motion.div 
+    <motion.div
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.6 }}
-      className="grid gap-4 md:grid-cols-2 lg:grid-cols-4"
+      className="space-y-4"
     >
-      <StatCard
-        title="股票总数"
-        value={stats.totalStocks.toLocaleString()}
-        icon={BarChart3}
-        subtitle="A股上市公司"
-        color="from-blue-500 to-blue-600"
-        progress={activeRate}
-      />
+      {/* 数据日期显示 */}
+      {tradingDateInfo && (
+        <div className="flex items-center justify-between text-sm text-muted-foreground">
+          <div className="flex items-center gap-2">
+            <Calendar className="w-4 h-4" />
+            <span>数据日期: {tradingDateInfo.date}</span>
+            {!tradingDateInfo.isToday && (
+              <Badge variant="outline" className="text-xs">
+                <AlertCircle className="w-3 h-3 mr-1" />
+                {formatTradingDateDisplay(tradingDateInfo)}
+              </Badge>
+            )}
+          </div>
+        </div>
+      )}
 
-      <StatCard
-        title="活跃股票"
-        value={stats.activeStocks.toLocaleString()}
-        icon={Activity}
-        subtitle="今日有交易"
-        color="from-green-500 to-green-600"
-        trend={stats.activeStocks > stats.totalStocks * 0.8 ? 'up' : 'neutral'}
-      />
+      {/* 统计卡片 */}
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+        <StatCard
+          title="股票总数"
+          value={stats.totalStocks.toLocaleString()}
+          icon={BarChart3}
+          subtitle="A股上市公司"
+          color="from-blue-500 to-blue-600"
+          progress={activeRate}
+        />
 
-      <StatCard
-        title="平均涨跌幅"
-        value={`${stats.avgChange > 0 ? '+' : ''}${stats.avgChange}%`}
-        icon={stats.avgChange >= 0 ? TrendingUp : TrendingDown}
-        subtitle="今日市场表现"
-        color={stats.avgChange >= 0 ? getStockColor(1, 'gradient') : getStockColor(-1, 'gradient')}
-        trend={stats.avgChange > 0 ? 'up' : stats.avgChange < 0 ? 'down' : 'neutral'}
-      />
+        <StatCard
+          title="活跃股票"
+          value={stats.activeStocks.toLocaleString()}
+          icon={Activity}
+          subtitle="今日有交易"
+          color="from-green-500 to-green-600"
+          trend={stats.activeStocks > stats.totalStocks * 0.8 ? 'up' : 'neutral'}
+        />
 
-      <StatCard
-        title="总成交额"
-        value={`${stats.totalAmount}亿元`}
-        icon={DollarSign}
-        subtitle="今日成交额"
-        color="from-purple-500 to-purple-600"
-        progress={upRate}
-      />
+        <StatCard
+          title="平均涨跌幅"
+          value={`${stats.avgChange > 0 ? '+' : ''}${stats.avgChange}%`}
+          icon={stats.avgChange >= 0 ? TrendingUp : TrendingDown}
+          subtitle="今日市场表现"
+          color={stats.avgChange >= 0 ? getStockColor(1, 'gradient') : getStockColor(-1, 'gradient')}
+          trend={stats.avgChange > 0 ? 'up' : stats.avgChange < 0 ? 'down' : 'neutral'}
+        />
+
+        <StatCard
+          title="总成交额"
+          value={`${stats.totalAmount}亿元`}
+          icon={DollarSign}
+          subtitle="今日成交额"
+          color="from-purple-500 to-purple-600"
+          progress={upRate}
+        />
+      </div>
     </motion.div>
   )
 } 

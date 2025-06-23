@@ -7,18 +7,21 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { 
-  TrendingUp, 
-  TrendingDown, 
-  Search, 
-  Target, 
+import {
+  TrendingUp,
+  TrendingDown,
+  Search,
+  Target,
   Zap,
   Crown,
   ArrowUpRight,
-  ArrowDownRight
+  ArrowDownRight,
+  Calendar,
+  AlertCircle
 } from "lucide-react"
 import { supabase } from "@/lib/supabase"
 import { getStockColor, formatPctChg } from "@/lib/stock-colors"
+import { getLatestTradingDate, formatTradingDateDisplay, type TradingDateInfo } from "@/lib/trading-utils"
 
 interface StockRankData {
   stock_code: string
@@ -49,17 +52,20 @@ export function SmartStockRanking() {
   const [stockList, setStockList] = useState<StockBasic[]>([])
   const [loading, setLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState('')
+  const [tradingDateInfo, setTradingDateInfo] = useState<TradingDateInfo | null>(null)
 
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const today = new Date().toISOString().split('T')[0]
+        // 获取最近的交易日期信息
+        const dateInfo = await getLatestTradingDate()
+        setTradingDateInfo(dateInfo)
 
         // 获取人气排行数据
         const { data: hotRank } = await supabase
           .from('stock_hot_rank')
           .select('*')
-          .eq('trade_date', today)
+          .eq('trade_date', dateInfo.date)
           .order('current_rank', { ascending: true })
           .limit(20)
 
@@ -67,7 +73,7 @@ export function SmartStockRanking() {
         const { data: hotUp } = await supabase
           .from('stock_hot_up')
           .select('*')
-          .eq('trade_date', today)
+          .eq('trade_date', dateInfo.date)
           .order('current_rank', { ascending: true })
           .limit(20)
 
@@ -112,7 +118,7 @@ export function SmartStockRanking() {
     fetchData()
   }, [])
 
-  const filteredStocks = stockList.filter(stock => 
+  const filteredStocks = stockList.filter(stock =>
     stock.stockName.toLowerCase().includes(searchTerm.toLowerCase()) ||
     stock.stockCode.includes(searchTerm)
   )
@@ -152,7 +158,7 @@ export function SmartStockRanking() {
             <div className="text-right space-y-1">
               <p className="font-medium">¥{stock.latest_price.toFixed(2)}</p>
               <div className="flex items-center space-x-2">
-                <Badge 
+                <Badge
                   variant="outline"
                   className={`text-xs ${getStockColor(stock.pct_chg, 'full')}`}
                 >
@@ -164,13 +170,12 @@ export function SmartStockRanking() {
                   {formatPctChg(stock.pct_chg)}
                 </Badge>
                 {showRankChange && stock.rank_change !== undefined && (
-                  <Badge 
+                  <Badge
                     variant="secondary"
-                    className={`text-xs ${
-                      stock.rank_change > 0 ? getStockColor(1, 'full') : 
-                      stock.rank_change < 0 ? getStockColor(-1, 'full') : 
-                      'text-gray-600 bg-gray-50'
-                    }`}
+                    className={`text-xs ${stock.rank_change > 0 ? getStockColor(1, 'full') :
+                      stock.rank_change < 0 ? getStockColor(-1, 'full') :
+                        'text-gray-600 bg-gray-50'
+                      }`}
                   >
                     {stock.rank_change > 0 ? (
                       <ArrowUpRight className="h-3 w-3 mr-1" />
@@ -200,32 +205,49 @@ export function SmartStockRanking() {
   }
 
   return (
-    <motion.div 
+    <motion.div
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       transition={{ duration: 0.6 }}
       className="space-y-6"
     >
       <Tabs defaultValue="hotrank" className="w-full">
-        <div className="flex items-center justify-between mb-4">
-          <TabsList className="bg-white/80 dark:bg-slate-800/80 backdrop-blur-sm">
-            <TabsTrigger value="hotrank" className="data-[state=active]:bg-red-500 data-[state=active]:text-white">
-              <Crown className="h-4 w-4 mr-2" />
-              人气排行
-            </TabsTrigger>
-            <TabsTrigger value="hotup" className="data-[state=active]:bg-orange-500 data-[state=active]:text-white">
-              <Zap className="h-4 w-4 mr-2" />
-              飙升排行
-            </TabsTrigger>
-            <TabsTrigger value="search" className="data-[state=active]:bg-blue-500 data-[state=active]:text-white">
-              <Search className="h-4 w-4 mr-2" />
-              股票搜索
-            </TabsTrigger>
-          </TabsList>
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-4">
+          <div>
+            <TabsList className="bg-white/80 dark:bg-slate-800/80 backdrop-blur-sm">
+              <TabsTrigger value="hotrank" className="data-[state=active]:bg-red-500 data-[state=active]:text-white">
+                <Crown className="h-4 w-4 mr-2" />
+                人气排行
+              </TabsTrigger>
+              <TabsTrigger value="hotup" className="data-[state=active]:bg-orange-500 data-[state=active]:text-white">
+                <Zap className="h-4 w-4 mr-2" />
+                飙升排行
+              </TabsTrigger>
+              <TabsTrigger value="search" className="data-[state=active]:bg-blue-500 data-[state=active]:text-white">
+                <Search className="h-4 w-4 mr-2" />
+                股票搜索
+              </TabsTrigger>
+            </TabsList>
+          </div>
+
+          {tradingDateInfo && (
+            <div className="flex items-center gap-2">
+              <Calendar className="w-4 h-4 text-muted-foreground" />
+              <span className="text-sm text-muted-foreground">
+                数据日期: {tradingDateInfo.date}
+              </span>
+              {!tradingDateInfo.isToday && (
+                <Badge variant="outline" className="text-xs">
+                  <AlertCircle className="w-3 h-3 mr-1" />
+                  {formatTradingDateDisplay(tradingDateInfo)}
+                </Badge>
+              )}
+            </div>
+          )}
         </div>
 
         <TabsContent value="hotrank">
-          <RankingCard 
+          <RankingCard
             data={hotRankData}
             title="股票人气排行榜"
             icon={Crown}
@@ -233,7 +255,7 @@ export function SmartStockRanking() {
         </TabsContent>
 
         <TabsContent value="hotup">
-          <RankingCard 
+          <RankingCard
             data={hotUpData}
             title="股票飙升排行榜"
             icon={Zap}
@@ -285,7 +307,7 @@ export function SmartStockRanking() {
                   {stock.latestQuote && (
                     <div className="text-right">
                       <p className="font-medium">¥{stock.latestQuote.close.toFixed(2)}</p>
-                      <Badge 
+                      <Badge
                         variant="outline"
                         className={`text-xs ${getStockColor(stock.latestQuote.pctChg, 'full')}`}
                       >

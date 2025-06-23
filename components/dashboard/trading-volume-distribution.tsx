@@ -4,8 +4,9 @@ import { useEffect, useState } from "react"
 import { motion } from "framer-motion"
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, BarChart, Bar, XAxis, YAxis, CartesianGrid } from "recharts"
 import { Badge } from "@/components/ui/badge"
-import { DollarSign } from "lucide-react"
+import { DollarSign, Calendar, AlertCircle } from "lucide-react"
 import { supabase } from "@/lib/supabase"
+import { getLatestTradingDate, formatTradingDateDisplay, type TradingDateInfo } from "@/lib/trading-utils"
 
 interface VolumeData {
   name: string
@@ -25,13 +26,16 @@ export function TradingVolumeDistribution() {
   const [volumeData, setVolumeData] = useState<VolumeData[]>([])
   const [exchangeData, setExchangeData] = useState<ExchangeData[]>([])
   const [loading, setLoading] = useState(true)
+  const [tradingDateInfo, setTradingDateInfo] = useState<TradingDateInfo | null>(null)
 
   useEffect(() => {
     const fetchVolumeData = async () => {
       try {
-        const today = new Date().toISOString().split('T')[0]
-        
-        // 获取今日交易数据
+        // 获取最近的交易日期信息
+        const dateInfo = await getLatestTradingDate()
+        setTradingDateInfo(dateInfo)
+
+        // 获取最近交易日的数据
         const { data: quotes } = await supabase
           .from('daily_quote')
           .select(`
@@ -39,18 +43,18 @@ export function TradingVolumeDistribution() {
             amount,
             stock_basic!inner(exchange)
           `)
-          .eq('trade_date', today)
+          .eq('trade_date', dateInfo.date)
           .not('volume', 'is', null)
 
         if (quotes) {
           // 计算各交易所数据
           const exchangeStats: Record<string, ExchangeData> = {}
-          
+
           quotes.forEach((quote: any) => {
             const exchange = quote.stock_basic.exchange
             const volume = Number(quote.volume)
             const amount = Number(quote.amount)
-            
+
             if (!exchangeStats[exchange]) {
               exchangeStats[exchange] = {
                 exchange,
@@ -59,7 +63,7 @@ export function TradingVolumeDistribution() {
                 stockCount: 0
               }
             }
-            
+
             exchangeStats[exchange].totalVolume += volume
             exchangeStats[exchange].totalAmount += amount
             exchangeStats[exchange].stockCount += 1
@@ -70,7 +74,7 @@ export function TradingVolumeDistribution() {
 
           // 计算总量用于百分比
           const totalVolume = exchangeArray.reduce((sum, item) => sum + item.totalVolume, 0)
-          
+
           // 生成饼图数据
           const pieData: VolumeData[] = exchangeArray.map((item, index) => ({
             name: item.exchange,
@@ -121,7 +125,7 @@ export function TradingVolumeDistribution() {
   }
 
   return (
-    <motion.div 
+    <motion.div
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       transition={{ duration: 0.6 }}
@@ -160,8 +164,8 @@ export function TradingVolumeDistribution() {
             className="flex items-center justify-between p-2 rounded bg-gradient-to-r from-slate-50 to-transparent dark:from-slate-700/50"
           >
             <div className="flex items-center space-x-2">
-              <div 
-                className="w-3 h-3 rounded" 
+              <div
+                className="w-3 h-3 rounded"
                 style={{ backgroundColor: volumeData[index]?.color }}
               />
               <span className="text-sm font-medium">{item.exchange}</span>
@@ -177,6 +181,22 @@ export function TradingVolumeDistribution() {
           </motion.div>
         ))}
       </div>
+
+      {/* 数据日期显示 */}
+      {tradingDateInfo && (
+        <div className="text-center py-2">
+          <div className="flex items-center justify-center gap-2 text-xs text-muted-foreground">
+            <Calendar className="w-3 h-3" />
+            <span>数据日期: {tradingDateInfo.date}</span>
+            {!tradingDateInfo.isToday && (
+              <Badge variant="outline" className="text-xs px-1">
+                <AlertCircle className="w-2 h-2 mr-1" />
+                {formatTradingDateDisplay(tradingDateInfo)}
+              </Badge>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* 汇总信息 */}
       <div className="pt-2 border-t">

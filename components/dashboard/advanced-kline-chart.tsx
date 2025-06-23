@@ -6,9 +6,10 @@ import { ComposedChart, Bar, Line, XAxis, YAxis, CartesianGrid, Tooltip, Respons
 import { Button } from "@/components/ui/button"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Badge } from "@/components/ui/badge"
-import { TrendingUp, TrendingDown, BarChart3 } from "lucide-react"
+import { TrendingUp, TrendingDown, BarChart3, Calendar, AlertCircle } from "lucide-react"
 import { supabase } from "@/lib/supabase"
 import { getStockColor, formatPctChg, formatLargeNumber } from "@/lib/stock-colors"
+import { getLatestTradingDate, formatTradingDateDisplay, type TradingDateInfo } from "@/lib/trading-utils"
 
 interface KLineData {
   date: string
@@ -26,12 +27,17 @@ export function AdvancedKLineChart() {
   const [selectedStock, setSelectedStock] = useState('000001')
   const [timeRange, setTimeRange] = useState('30d')
   const [loading, setLoading] = useState(true)
+  const [tradingDateInfo, setTradingDateInfo] = useState<TradingDateInfo | null>(null)
 
   useEffect(() => {
     const fetchKLineData = async () => {
       try {
-        const endDate = new Date()
-        const startDate = new Date()
+        // 获取最近的交易日期信息
+        const dateInfo = await getLatestTradingDate()
+        setTradingDateInfo(dateInfo)
+
+        const endDate = new Date(dateInfo.date)
+        const startDate = new Date(endDate)
         startDate.setDate(endDate.getDate() - (timeRange === '30d' ? 30 : timeRange === '7d' ? 7 : 90))
 
         const { data } = await supabase
@@ -39,14 +45,14 @@ export function AdvancedKLineChart() {
           .select('*')
           .eq('stock_code', selectedStock)
           .gte('trade_date', startDate.toISOString().split('T')[0])
-          .lte('trade_date', endDate.toISOString().split('T')[0])
+          .lte('trade_date', dateInfo.date)
           .order('trade_date', { ascending: true })
 
         if (data) {
           const formattedData: KLineData[] = data.map((item: any) => ({
             date: item.trade_date,
             open: Number(item.open),
-            high: Number(item.high), 
+            high: Number(item.high),
             low: Number(item.low),
             close: Number(item.close),
             volume: Number(item.volume),
@@ -104,12 +110,28 @@ export function AdvancedKLineChart() {
   const isPositive = latestData?.pct_chg >= 0
 
   return (
-    <motion.div 
+    <motion.div
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       transition={{ duration: 0.6 }}
       className="space-y-4"
     >
+      {/* 数据日期显示 */}
+      {tradingDateInfo && (
+        <div className="flex items-center justify-between text-sm text-muted-foreground">
+          <div className="flex items-center gap-2">
+            <Calendar className="w-4 h-4" />
+            <span>数据日期: {tradingDateInfo.date}</span>
+            {!tradingDateInfo.isToday && (
+              <Badge variant="outline" className="text-xs">
+                <AlertCircle className="w-3 h-3 mr-1" />
+                {formatTradingDateDisplay(tradingDateInfo)}
+              </Badge>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* 控制栏 */}
       <div className="flex items-center justify-between flex-wrap gap-4">
         <div className="flex items-center space-x-4">
@@ -127,11 +149,11 @@ export function AdvancedKLineChart() {
           </Select>
 
           {latestData && (
-            <Badge 
+            <Badge
               variant="outline"
               className={getStockColor(latestData.pct_chg, 'full')}
             >
-              当前价: {latestData.close.toFixed(2)} 
+              当前价: {latestData.close.toFixed(2)}
               <span className="ml-1 flex items-center">
                 {isPositive ? (
                   <TrendingUp className="h-3 w-3" />
@@ -143,7 +165,7 @@ export function AdvancedKLineChart() {
             </Badge>
           )}
         </div>
-        
+
         <div className="flex space-x-1">
           {[
             { key: '7d', label: '7天' },
@@ -168,40 +190,40 @@ export function AdvancedKLineChart() {
         <ResponsiveContainer width="100%" height="100%">
           <ComposedChart data={klineData} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
             <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-            <XAxis 
-              dataKey="date" 
+            <XAxis
+              dataKey="date"
               stroke="#64748b"
               fontSize={12}
               tickFormatter={(value) => new Date(value).toLocaleDateString('zh-CN', { month: 'short', day: 'numeric' })}
             />
-            <YAxis 
+            <YAxis
               yAxisId="price"
               stroke="#64748b"
               fontSize={12}
               domain={['dataMin * 0.95', 'dataMax * 1.05']}
             />
-            <YAxis 
+            <YAxis
               yAxisId="volume"
               orientation="right"
-              stroke="#64748b" 
+              stroke="#64748b"
               fontSize={12}
               tickFormatter={(value) => (value / 10000).toFixed(0) + 'W'}
             />
             <Tooltip content={<CustomTooltip />} />
             <Legend />
-            
-            <Bar 
+
+            <Bar
               yAxisId="volume"
-              dataKey="volume" 
-              fill="#3b82f6" 
+              dataKey="volume"
+              fill="#3b82f6"
               fillOpacity={0.3}
               name="成交量"
             />
-            <Line 
+            <Line
               yAxisId="price"
-              type="monotone" 
-              dataKey="close" 
-              stroke="#ef4444" 
+              type="monotone"
+              dataKey="close"
+              stroke="#ef4444"
               strokeWidth={2}
               dot={false}
               name="收盘价"

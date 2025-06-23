@@ -5,9 +5,10 @@ import { motion } from "framer-motion"
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from "recharts"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { TrendingUp, TrendingDown, BarChart3 } from "lucide-react"
+import { TrendingUp, TrendingDown, BarChart3, Calendar, AlertCircle } from "lucide-react"
 import { supabase } from "@/lib/supabase"
 import { getStockColor, formatPctChg } from "@/lib/stock-colors"
+import { getLatestTradingDate, formatTradingDateDisplay, type TradingDateInfo } from "@/lib/trading-utils"
 
 interface IndexData {
   trade_date: string
@@ -30,7 +31,7 @@ interface ChartData {
 
 const indexMapping = {
   'sh000001': '上证指数',
-  'sz399001': '深证成指', 
+  'sz399001': '深证成指',
   'sz399006': '创业板指',
   'sh000300': '沪深300',
   'sh000905': '中证500'
@@ -49,20 +50,25 @@ export function RealTimeIndexChart() {
   const [latestData, setLatestData] = useState<Record<string, IndexData>>({})
   const [loading, setLoading] = useState(true)
   const [timeRange, setTimeRange] = useState('30d')
+  const [tradingDateInfo, setTradingDateInfo] = useState<TradingDateInfo | null>(null)
 
   useEffect(() => {
     const fetchIndexData = async () => {
       try {
-        // 获取最近30天的指数数据
-        const endDate = new Date()
-        const startDate = new Date()
+        // 获取最近的交易日期信息
+        const dateInfo = await getLatestTradingDate()
+        setTradingDateInfo(dateInfo)
+
+        // 获取指数数据
+        const endDate = new Date(dateInfo.date)
+        const startDate = new Date(endDate)
         startDate.setDate(endDate.getDate() - (timeRange === '30d' ? 30 : timeRange === '7d' ? 7 : 1))
 
         const { data: indexData } = await supabase
           .from('index_data')
           .select('*')
           .gte('trade_date', startDate.toISOString().split('T')[0])
-          .lte('trade_date', endDate.toISOString().split('T')[0])
+          .lte('trade_date', dateInfo.date)
           .order('trade_date', { ascending: true })
 
         if (indexData) {
@@ -73,13 +79,13 @@ export function RealTimeIndexChart() {
           indexData.forEach((item: any) => {
             const date = item.trade_date
             const indexName = indexMapping[item.index_code as keyof typeof indexMapping]
-            
+
             if (indexName) {
               if (!groupedData[date]) {
                 groupedData[date] = {}
               }
               groupedData[date][indexName] = item.close
-              
+
               // 保存最新数据
               if (!latest[indexName] || new Date(item.trade_date) > new Date(latest[indexName].trade_date)) {
                 latest[indexName] = item
@@ -140,12 +146,28 @@ export function RealTimeIndexChart() {
   }
 
   return (
-    <motion.div 
+    <motion.div
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       transition={{ duration: 0.6 }}
       className="h-full flex flex-col"
     >
+      {/* 数据日期显示 */}
+      {tradingDateInfo && (
+        <div className="flex items-center justify-between text-sm text-muted-foreground mb-3">
+          <div className="flex items-center gap-2">
+            <Calendar className="w-4 h-4" />
+            <span>数据日期: {tradingDateInfo.date}</span>
+            {!tradingDateInfo.isToday && (
+              <Badge variant="outline" className="text-xs">
+                <AlertCircle className="w-3 h-3 mr-1" />
+                {formatTradingDateDisplay(tradingDateInfo)}
+              </Badge>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* 头部控制栏 */}
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center space-x-2">
@@ -153,12 +175,12 @@ export function RealTimeIndexChart() {
             const data = latestData[indexName]
             const isPositive = data.pct_chg >= 0
             return (
-              <Badge 
+              <Badge
                 key={indexName}
                 variant="outline"
                 className={`text-xs ${getStockColor(data.pct_chg, 'full')}`}
               >
-                {indexName}: {data.close.toFixed(2)} 
+                {indexName}: {data.close.toFixed(2)}
                 <span className="ml-1 flex items-center">
                   {isPositive ? (
                     <TrendingUp className="h-3 w-3" />
@@ -171,7 +193,7 @@ export function RealTimeIndexChart() {
             )
           })}
         </div>
-        
+
         <div className="flex space-x-1">
           {[
             { key: '1d', label: '1天' },
@@ -196,22 +218,22 @@ export function RealTimeIndexChart() {
         <ResponsiveContainer width="100%" height="100%">
           <LineChart data={chartData} margin={{ top: 5, right: 30, left: 20, bottom: 5 }}>
             <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-            <XAxis 
-              dataKey="date" 
+            <XAxis
+              dataKey="date"
               stroke="#64748b"
               fontSize={12}
               tickFormatter={(value) => new Date(value).toLocaleDateString('zh-CN', { month: 'short', day: 'numeric' })}
             />
-            <YAxis 
+            <YAxis
               stroke="#64748b"
               fontSize={12}
               tickFormatter={(value) => value.toFixed(0)}
             />
             <Tooltip content={<CustomTooltip />} />
-            <Legend 
+            <Legend
               wrapperStyle={{ fontSize: '12px' }}
             />
-            
+
             {Object.entries(indexColors).map(([indexName, color]) => (
               <Line
                 key={indexName}

@@ -5,9 +5,11 @@ import { motion } from "framer-motion"
 import { Treemap, ResponsiveContainer, Tooltip } from "recharts"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { PieChart, TrendingUp, TrendingDown } from "lucide-react"
+import { PieChart, TrendingUp, TrendingDown, Calendar, AlertCircle } from "lucide-react"
 import { supabase } from "@/lib/supabase"
 import { getStockColor, formatPctChg } from "@/lib/stock-colors"
+import { getLatestTradingDate, formatTradingDateDisplay, type TradingDateInfo } from "@/lib/trading-utils"
+import { Button } from "@/components/ui/button"
 
 interface SectorData {
   name: string
@@ -31,98 +33,147 @@ export function SectorAnalysis() {
   const [sectorData, setSectorData] = useState<SectorData[]>([])
   const [industryStats, setIndustryStats] = useState<IndustryStats[]>([])
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [tradingDateInfo, setTradingDateInfo] = useState<TradingDateInfo | null>(null)
 
   useEffect(() => {
     const fetchSectorData = async () => {
       try {
-        const today = new Date().toISOString().split('T')[0]
-        
-        // 获取行业统计数据
-        const { data: industryData } = await supabase
+        setError(null)
+        // 获取最近的交易日期信息
+        const dateInfo = await getLatestTradingDate()
+        setTradingDateInfo(dateInfo)
+
+        console.log('获取板块数据，交易日期:', dateInfo.date)
+
+        // 先获取有行业信息的股票基本信息
+        const { data: stocksData, error: stocksError } = await supabase
           .from('stock_basic')
-          .select(`
-            industry,
-            daily_quotes!inner(
-              close,
-              pct_chg,
-              volume,
-              amount,
-              trade_date
-            )
-          `)
-          .eq('daily_quotes.trade_date', today)
+          .select('stock_code, stock_name, industry')
           .not('industry', 'is', null)
+          .limit(1000)
 
-        if (industryData) {
-          // 按行业分组统计
-          const industryMap: Record<string, {
-            stocks: any[]
-            totalVolume: number
-            totalAmount: number
-          }> = {}
-
-          industryData.forEach((stock: any) => {
-            const industry = stock.industry
-            const quote = stock.daily_quotes[0]
-            
-            if (!industryMap[industry]) {
-              industryMap[industry] = {
-                stocks: [],
-                totalVolume: 0,
-                totalAmount: 0
-              }
-            }
-            
-            industryMap[industry].stocks.push({
-              close: Number(quote.close),
-              pct_chg: Number(quote.pct_chg),
-              volume: Number(quote.volume),
-              amount: Number(quote.amount)
-            })
-            
-            industryMap[industry].totalVolume += Number(quote.volume)
-            industryMap[industry].totalAmount += Number(quote.amount)
-          })
-
-          // 生成行业统计
-          const industries: IndustryStats[] = Object.entries(industryMap).map(([industry, data]) => {
-            const stockCount = data.stocks.length
-            const avgPrice = data.stocks.reduce((sum, stock) => sum + stock.close, 0) / stockCount
-            const avgChange = data.stocks.reduce((sum, stock) => sum + stock.pct_chg, 0) / stockCount
-            
-            return {
-              industry,
-              stockCount,
-              avgPrice,
-              avgChange,
-              totalVolume: data.totalVolume,
-              totalAmount: data.totalAmount
-            }
-          }).sort((a, b) => b.totalAmount - a.totalAmount)
-
-          setIndustryStats(industries)
-
-          // 生成树状图数据
-          const treeMapData: SectorData[] = industries.slice(0, 20).map((item, index) => {
-            const colors = [
-              '#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6',
-              '#06b6d4', '#84cc16', '#f97316', '#ec4899', '#6366f1'
-            ]
-            
-            return {
-              name: item.industry,
-              value: item.totalAmount / 100000000, // 转换为亿元
-              color: colors[index % colors.length],
-              stockCount: item.stockCount,
-              avgChange: item.avgChange,
-              totalMarketCap: item.totalAmount / 100000000
-            }
-          })
-
-          setSectorData(treeMapData)
+        if (stocksError) {
+          console.error('获取股票基本信息失败:', stocksError)
+          throw stocksError
         }
-      } catch (error) {
+
+        console.log('获取到股票基本信息数量:', stocksData?.length || 0)
+
+        if (!stocksData || stocksData.length === 0) {
+          setError('没有找到股票基本信息')
+          return
+        }
+
+        // 获取这些股票的最新行情数据
+        const stockCodes = stocksData.map(stock => stock.stock_code)
+        const { data: quotesData, error: quotesError } = await supabase
+          .from('daily_quote')
+          .select('stock_code, close, pct_chg, volume, amount, trade_date')
+          .eq('trade_date', dateInfo.date)
+          .in('stock_code', stockCodes)
+
+        if (quotesError) {
+          console.error('获取行情数据失败:', quotesError)
+          throw quotesError
+        }
+
+        console.log('获取到行情数据数量:', quotesData?.length || 0)
+
+        if (!quotesData || quotesData.length === 0) {
+          setError(`没有找到 ${dateInfo.date} 的行情数据`)
+          return
+        }
+
+        // 合并股票基本信息和行情数据
+        const mergedData = stocksData
+          .map(stock => {
+            const quote = quotesData.find(q => q.stock_code === stock.stock_code)
+            return quote ? { ...stock, ...quote } : null
+          })
+          .filter(Boolean)
+
+        console.log('合并后数据数量:', mergedData.length)
+
+        if (mergedData.length === 0) {
+          setError('没有找到匹配的股票和行情数据')
+          return
+        }
+
+        // 按行业分组统计
+        const industryMap: Record<string, {
+          stocks: any[]
+          totalVolume: number
+          totalAmount: number
+        }> = {}
+
+        mergedData.forEach((item: any) => {
+          const industry = item.industry
+
+          if (!industryMap[industry]) {
+            industryMap[industry] = {
+              stocks: [],
+              totalVolume: 0,
+              totalAmount: 0
+            }
+          }
+
+          industryMap[industry].stocks.push({
+            stock_code: item.stock_code,
+            name: item.stock_name,
+            close: Number(item.close || 0),
+            pct_chg: Number(item.pct_chg || 0),
+            volume: Number(item.volume || 0),
+            amount: Number(item.amount || 0)
+          })
+
+          industryMap[industry].totalVolume += Number(item.volume || 0)
+          industryMap[industry].totalAmount += Number(item.amount || 0)
+        })
+
+        console.log('行业分组数量:', Object.keys(industryMap).length)
+
+        // 生成行业统计
+        const industries: IndustryStats[] = Object.entries(industryMap).map(([industry, data]) => {
+          const stockCount = data.stocks.length
+          const avgPrice = data.stocks.reduce((sum, stock) => sum + stock.close, 0) / stockCount
+          const avgChange = data.stocks.reduce((sum, stock) => sum + stock.pct_chg, 0) / stockCount
+
+          return {
+            industry,
+            stockCount,
+            avgPrice,
+            avgChange,
+            totalVolume: data.totalVolume,
+            totalAmount: data.totalAmount
+          }
+        }).sort((a, b) => b.totalAmount - a.totalAmount)
+
+        setIndustryStats(industries)
+
+        // 生成树状图数据
+        const treeMapData: SectorData[] = industries.slice(0, 20).map((item, index) => {
+          const colors = [
+            '#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6',
+            '#06b6d4', '#84cc16', '#f97316', '#ec4899', '#6366f1'
+          ]
+
+          return {
+            name: item.industry,
+            value: item.totalAmount / 100000000, // 转换为亿元
+            color: colors[index % colors.length],
+            stockCount: item.stockCount,
+            avgChange: item.avgChange,
+            totalMarketCap: item.totalAmount / 100000000
+          }
+        })
+
+        setSectorData(treeMapData)
+        console.log('板块数据处理完成:', treeMapData.length)
+
+      } catch (error: any) {
         console.error('获取板块数据失败:', error)
+        setError(error.message || '获取板块数据失败')
       } finally {
         setLoading(false)
       }
@@ -161,13 +212,63 @@ export function SectorAnalysis() {
     )
   }
 
+  if (error) {
+    return (
+      <div className="h-96 flex items-center justify-center">
+        <div className="text-center">
+          <AlertCircle className="h-12 w-12 mx-auto mb-4 text-red-500" />
+          <p className="text-red-600 font-medium mb-2">板块数据加载失败</p>
+          <p className="text-muted-foreground text-sm">{error}</p>
+          <Button
+            variant="outline"
+            size="sm"
+            className="mt-4"
+            onClick={() => window.location.reload()}
+          >
+            重新加载
+          </Button>
+        </div>
+      </div>
+    )
+  }
+
+  if (industryStats.length === 0) {
+    return (
+      <div className="h-96 flex items-center justify-center">
+        <div className="text-center">
+          <PieChart className="h-12 w-12 mx-auto mb-4 text-gray-400" />
+          <p className="text-muted-foreground font-medium mb-2">暂无板块数据</p>
+          <p className="text-muted-foreground text-sm">
+            可能是当前交易日没有数据或者数据库中缺少行业分类信息
+          </p>
+        </div>
+      </div>
+    )
+  }
+
   return (
-    <motion.div 
+    <motion.div
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       transition={{ duration: 0.6 }}
       className="space-y-6"
     >
+      {/* 数据日期显示 */}
+      {tradingDateInfo && (
+        <div className="flex items-center justify-between text-sm text-muted-foreground">
+          <div className="flex items-center gap-2">
+            <Calendar className="w-4 h-4" />
+            <span>数据日期: {tradingDateInfo.date}</span>
+            {!tradingDateInfo.isToday && (
+              <Badge variant="outline" className="text-xs">
+                <AlertCircle className="w-3 h-3 mr-1" />
+                {formatTradingDateDisplay(tradingDateInfo)}
+              </Badge>
+            )}
+          </div>
+        </div>
+      )}
+
       <div className="grid gap-6 lg:grid-cols-3">
         {/* 树状图 */}
         <div className="lg:col-span-2">
@@ -223,7 +324,7 @@ export function SectorAnalysis() {
                       </p>
                     </div>
                     <div className="text-right">
-                      <Badge 
+                      <Badge
                         variant="outline"
                         className={`text-xs ${getStockColor(industry.avgChange, 'full')}`}
                       >

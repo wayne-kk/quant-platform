@@ -6,11 +6,11 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { 
-  TrendingUp, 
-  TrendingDown, 
-  Activity, 
-  DollarSign, 
+import {
+  TrendingUp,
+  TrendingDown,
+  Activity,
+  DollarSign,
   BarChart3,
   PieChart,
   Target,
@@ -18,7 +18,8 @@ import {
   Eye,
   RefreshCw,
   Filter,
-  Search
+  Search,
+  Calendar
 } from "lucide-react"
 
 // 新的现代化组件
@@ -31,6 +32,9 @@ import { NewsTimeline } from "@/components/dashboard/news-timeline"
 import { TradingVolumeDistribution } from "@/components/dashboard/trading-volume-distribution"
 import { SectorAnalysis } from "@/components/dashboard/sector-analysis"
 import { RiskMonitor } from "@/components/dashboard/risk-monitor"
+import { TradingCalendar } from "@/components/dashboard/trading-calendar"
+import { TradeStatusIndicator } from "@/components/dashboard/trade-status-indicator"
+import { TradingCalendarOverview } from "@/components/dashboard/trading-calendar-overview"
 
 const fadeInUp = {
   initial: { opacity: 0, y: 20 },
@@ -58,13 +62,13 @@ export default function DashboardPage() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50 dark:from-slate-900 dark:via-slate-800 dark:to-slate-900">
-      <motion.div 
+      <motion.div
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         className="flex-1 space-y-6 p-4 md:p-8 pt-6"
       >
         {/* 头部区域 */}
-        <motion.div 
+        <motion.div
           {...fadeInUp}
           className="flex flex-col md:flex-row items-start md:items-center justify-between space-y-4 md:space-y-0"
         >
@@ -76,11 +80,11 @@ export default function DashboardPage() {
               实时市场洞察 • 智能数据分析 • 专业投资决策
             </p>
           </div>
-          
+
           <div className="flex items-center space-x-3">
-            <Button 
-              variant="outline" 
-              size="sm" 
+            <Button
+              variant="outline"
+              size="sm"
               onClick={handleRefresh}
               disabled={refreshing}
               className="hover:bg-blue-50 dark:hover:bg-blue-900/20"
@@ -98,10 +102,14 @@ export default function DashboardPage() {
         {/* 导航标签 */}
         <motion.div {...fadeInUp} transition={{ delay: 0.1 }}>
           <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-            <TabsList className="grid w-full grid-cols-2 md:grid-cols-4 lg:grid-cols-8 h-auto p-1 bg-white/80 dark:bg-slate-800/80 backdrop-blur-sm">
+            <TabsList className="grid w-full grid-cols-2 md:grid-cols-4 lg:grid-cols-9 h-auto p-1 bg-white/80 dark:bg-slate-800/80 backdrop-blur-sm">
               <TabsTrigger value="overview" className="data-[state=active]:bg-blue-500 data-[state=active]:text-white">
                 <BarChart3 className="h-4 w-4 mr-2" />
                 市场概览
+              </TabsTrigger>
+              <TabsTrigger value="calendar" className="data-[state=active]:bg-emerald-500 data-[state=active]:text-white">
+                <Calendar className="h-4 w-4 mr-2" />
+                交易日历
               </TabsTrigger>
               <TabsTrigger value="indices" className="data-[state=active]:bg-purple-500 data-[state=active]:text-white">
                 <TrendingUp className="h-4 w-4 mr-2" />
@@ -141,6 +149,13 @@ export default function DashboardPage() {
                 animate="animate"
                 className="space-y-6"
               >
+                {/* 交易状态指示器 */}
+                <motion.div variants={fadeInUp}>
+                  <Suspense fallback={<div className="h-16 bg-gradient-to-r from-emerald-100 to-green-100 dark:from-emerald-900/20 dark:to-green-900/20 rounded-lg animate-pulse"></div>}>
+                    <TradeStatusIndicator />
+                  </Suspense>
+                </motion.div>
+
                 {/* 市场总览卡片 */}
                 <motion.div variants={fadeInUp}>
                   <Suspense fallback={<div className="h-32 bg-gradient-to-r from-blue-100 to-purple-100 dark:from-blue-900/20 dark:to-purple-900/20 rounded-lg animate-pulse"></div>}>
@@ -198,6 +213,25 @@ export default function DashboardPage() {
                       </Suspense>
                     </CardContent>
                   </Card>
+                </motion.div>
+              </motion.div>
+            </TabsContent>
+
+            {/* 交易日历 */}
+            <TabsContent value="calendar" className="space-y-6">
+              <motion.div variants={staggerContainer} initial="initial" animate="animate">
+                {/* 交易日历概览 */}
+                <motion.div variants={fadeInUp}>
+                  <Suspense fallback={<div className="h-64 bg-gradient-to-r from-emerald-50 to-green-50 dark:from-emerald-900/10 dark:to-green-900/10 rounded-lg animate-pulse"></div>}>
+                    <TradingCalendarOverview />
+                  </Suspense>
+                </motion.div>
+
+                {/* 详细日历 */}
+                <motion.div variants={fadeInUp}>
+                  <Suspense fallback={<div className="h-96 bg-gradient-to-r from-emerald-50 to-green-50 dark:from-emerald-900/10 dark:to-green-900/10 rounded-lg animate-pulse"></div>}>
+                    <TradingCalendar />
+                  </Suspense>
                 </motion.div>
               </motion.div>
             </TabsContent>
